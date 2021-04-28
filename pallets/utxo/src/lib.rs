@@ -17,12 +17,13 @@ use sp_runtime::{
 	traits::{BlakeTwo256, Hash, SaturatedConversion},
 	transaction_validity::{TransactionLongevity, ValidTransaction},
 };
-// use super::{block_author::BlockAuthor, issuance::Issuance};
+use self::{block_author::BlockAuthor, issuance::Issuance};
 
 /// Configure the pallet by specifying the parameters and types on which it depends.
 pub trait Config: frame_system::Config {
 	/// Because this pallet emits events, it depends on the runtime's definition of an event.
 	type Event: From<Event> + Into<<Self as frame_system::Config>::Event>;
+	type Issuance: Issuance<<Self as frame_system::Config>::BlockNumber, Value>;
 }
 
 #[cfg_attr(feature = "std", derive(Serialize, Deserialize))]
@@ -66,6 +67,9 @@ decl_storage! {
 				.map(|u| (BlakeTwo256::hash_of(&u), u))
 				.collect::<Vec<_>>()
 		}): map hasher(identity) H256 => Option<TransactionOutput>;
+
+		// the total reward that will be distributed to the miner when processing each block
+		pub RewardTotal get(fn reward_total): Value;
 	}
 
 	add_extra_genesis {
@@ -80,6 +84,8 @@ decl_storage! {
 decl_event! {
 	pub enum Event {
 		TransactionSuccess(Transaction),
+		RewardsIssued(Value, H256),
+		RewardsWasted,
 	}
 }
 
@@ -101,7 +107,7 @@ decl_module! {
 		pub fn spend(_origin, tx: Transaction) -> DispatchResult {
 			// 1. check that the transaction is valid
 
-			// 2. update the storage
+			let mut reward = 0;
 			Self::update_storage(&tx)?;
 
 			// 3. emit success event
@@ -109,12 +115,28 @@ decl_module! {
 
 			Ok(())
 		}
+
+		// function executed at the end of each block
+		fn on_finalize() {
+			match T::BlockAuthor::block_author() {
+				// Block author did not provide key to claim reward
+				None => Self::deposit_event(Event::RewardsWasted),
+				// Block author did provide key, so issue thir reward
+				Some(author) => Self::disperse_reward(&author),
+			}
+		}
 	}
 }
 
 // Add additional helper function that can be accessible in anywhere we import Config
 impl<T: Config> Module<T> {
-	fn update_storage(tx: &Transaction) -> DispatchResult {
+	fn update_storage(tx: &Transaction, reward: Value) -> DispatchResult {
+		let new_total = RewardTotal::get()
+			.checked_add(reward)
+			.ok_or("reward overflow")?;
+
+		RewardTotal::put(new_total);
+
 		// 1. Remove all input utxos from the UtxoStore
 		for input in &tx.inputs {
 			UtxoStore::remove(input.outpoint);
@@ -129,5 +151,24 @@ impl<T: Config> Module<T> {
 			UtxoStore::insert(key, output);
 		}
 		Ok(())
+	}
+
+	fn disperse_reward(author: &Public) {
+		// 1. divide the reward fairly amongst all validators processing the block
+		let reward = RewardTotal::take() + T::Issuance::issuance(Module::<T>::block_number());
+
+		// 2. create utxo for validator
+		let utxo = TransactionOutput{
+			value: reward,
+			pubkey: H256::from_slice(author.as_slice()),
+		};
+
+		let current_block = Module::<T>::block_number().saturated_into::<u64>();
+		let hash = BlakeTwo256::hash_of(&(&utxo, current_block));
+
+		// Store the Utxo
+		UtxoStore::insert(hash, utxo);
+
+		Self::deposit_event(Event::RewardsIssued(reward, hash));
 	}
 }
