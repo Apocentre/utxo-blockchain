@@ -1,9 +1,8 @@
 #![cfg_attr(not(feature = "std"), no_std)]
 use codec::{Decode, Encode};
 use frame_support::{
-	decl_event, decl_error, decl_module, decl_storage, StorageMap
+	decl_event, decl_error, decl_module, decl_storage,
 	dispatch::{DispatchResult, Vec},
-	ensure,
 };
 #[cfg(feature = "std")]
 use serde::{Deserialize, Serialize};
@@ -59,7 +58,19 @@ pub struct Transaction {
 // https://substrate.dev/docs/en/knowledgebase/runtime/storage
 decl_storage! {
 	trait Store for Module<T: Config> as UtxoModule {
-		UtxoStore: map hasher(blake2_128_concat) H256 => Option<TransactionOutput>;
+		// seed data from genesis
+		UtxoStore build(|config: &GenesisConfig| {
+			config.genesis_utxos
+				.iter()
+				.cloned()
+				.map(|u| (BlakeTwo256::hash_of(&u), u))
+				.collect::<Vec<_>>()
+		}): map hasher(identity) H256 => Option<TransactionOutput>;
+	}
+
+	add_extra_genesis {
+		// create a config property that will be pre-populated from the genesis file
+		config(genesis_utxos): Vec<TransactionOutput>;
 	}
 }
 
