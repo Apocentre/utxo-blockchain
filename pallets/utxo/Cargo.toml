@@ -1,13 +1,13 @@
 [package]
-authors = ['Substrate DevHub <https://github.com/substrate-developer-hub>']
-description = 'FRAME pallet template for defining custom runtime logic.'
+authors = ['ppoliani <info@apocentre.com>']
+description = 'A UTXO based blockchain'
 edition = '2018'
-homepage = 'https://substrate.dev'
-license = 'Unlicense'
-name = 'pallet-template'
+homepage = 'https://apocentre.com'
+license = 'MIT'
+name = 'pallet-utxo'
 readme = 'README.md'
-repository = 'https://github.com/substrate-developer-hub/substrate-node-template/'
-version = '3.0.0'
+repository = 'git@github.com:Apocentre/utxo-blockchain.git'
+version = '1.0.0'
 
 [package.metadata.docs.rs]
 targets = ['x86_64-unknown-linux-gnu']
