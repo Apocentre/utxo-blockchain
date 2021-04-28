@@ -1,6 +1,7 @@
+#![cfg_attr(not(feature = "std"), no_std)]
 use codec::{Decode, Encode};
 use frame_support::{
-	decl_event, decl_module, decl_storage,
+	decl_event, decl_error, decl_module, decl_storage, StorageMap
 	dispatch::{DispatchResult, Vec},
 	ensure,
 };
@@ -17,15 +18,15 @@ use sp_runtime::{
 	traits::{BlakeTwo256, Hash, SaturatedConversion},
 	transaction_validity::{TransactionLongevity, ValidTransaction},
 };
-use super::{block_author::BlockAuthor, issuance::Issuance};
+// use super::{block_author::BlockAuthor, issuance::Issuance};
 
 /// Configure the pallet by specifying the parameters and types on which it depends.
 pub trait Config: frame_system::Config {
 	/// Because this pallet emits events, it depends on the runtime's definition of an event.
-	type Event: From<Event<Self>> + Into<<Self as frame_system::Config>::Event>
+	type Event: From<Event<Self>> + Into<<Self as frame_system::Config>::Event>;
 }
 
-#[cfg(feature = "std", derive(Serialize, Deserialize))]
+#[cfg_attr(feature = "std", derive(Serialize, Deserialize))]
 #[derive(PartialEq, Eq, PartialOrd, Ord, Default, Clone, Encode, Decode, Hash, Debug)]
 pub struct TransactionInput {
 	// reference to a future UTXO to be spent
@@ -37,7 +38,7 @@ pub struct TransactionInput {
 
 pub type Value = u128;
 
-#[cfg(feature = "std", derive(Serialize, Deserialize))]
+#[cfg_attr(feature = "std", derive(Serialize, Deserialize))]
 #[derive(PartialEq, Eq, PartialOrd, Ord, Default, Clone, Encode, Decode, Hash, Debug)]
 pub struct TransactionOutput {
 	// size of the UTXO
@@ -47,18 +48,18 @@ pub struct TransactionOutput {
 	pub pubkey: H256,
 }
 
-#[cfg(feature = "std", derive(Serialize, Deserialize))]
+#[cfg_attr(feature = "std", derive(Serialize, Deserialize))]
 #[derive(PartialEq, Eq, PartialOrd, Ord, Default, Clone, Encode, Decode, Hash, Debug)]
 pub struct Transaction {
 	pub inputs: Vec<TransactionInput>,
-	pub outputs: Vex<TransactionOutput>,
+	pub outputs: Vec<TransactionOutput>,
 }
 
 // The pallet's runtime storage items.
 // https://substrate.dev/docs/en/knowledgebase/runtime/storage
 decl_storage! {
 	trait Store for Module<T: Config> as UtxoModule {
-
+		UtxoStore: map hasher(blake2_128_concat) H256 => Option<TransactionOutput>;
 	}
 }
 
@@ -67,6 +68,7 @@ decl_storage! {
 // https://substrate.dev/docs/en/knowledgebase/runtime/events
 decl_event! {
 	pub enum Event<T> where AccountId = <T as frame_system::Config>::AccountId {
+		ClaimCreated(AccountId, Vec<u8>),
 	}
 }
 
