@@ -4,8 +4,8 @@ edition = '2018'
 homepage = 'https://apocentre.com'
 license = 'MIT'
 name = 'utxo-runtime'
-repository = 'git@github.com:Apocentre/utxo-blockchain.git'
-version = '3.0.0'
+repository = 'https://github.com/Apocentre/utxo-blockchain'
+version = '0.1.0'
 
 [package.metadata.docs.rs]
 targets = ['x86_64-unknown-linux-gnu']
@@ -46,7 +46,7 @@ sp-transaction-pool = { default-features = false, version = '3.0.0' }
 sp-version = { default-features = false, version = '3.0.0' }
 
 # local dependencies
-pallet-utxo = { default-features = false, path = '../pallets/utxo', version = '1.0.0' }
+pallet-utxo = { default-features = false, path = '../pallets/utxo', version = '0.1.0' }
 
 [features]
 default = ['std']

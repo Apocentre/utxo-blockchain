@@ -1,107 +1,87 @@
-#![cfg_attr(not(feature = "std"), no_std)]
+use codec::{Decode, Encode};
+use frame_support::{
+	decl_event, decl_module, decl_storage,
+	dispatch::{DispatchResult, Vec},
+	ensure,
+};
+#[cfg(feature = "std")]
+use serde::{Deserialize, Serialize};
+use sp_core::{
+	crypto::Public as _,
+	H256,
+	H512,
+	sr25519::{Public, Signature},
+};
+use sp_std::collections::btree_map::BTreeMap;
+use sp_runtime::{
+	traits::{BlakeTwo256, Hash, SaturatedConversion},
+	transaction_validity::{TransactionLongevity, ValidTransaction},
+};
+use super::{block_author::BlockAuthor, issuance::Issuance};
 
-/// Edit this file to define custom logic or remove it if it is not needed.
-/// Learn more about FRAME and the core library of Substrate FRAME pallets:
-/// <https://substrate.dev/docs/en/knowledgebase/runtime/frame>
+/// Configure the pallet by specifying the parameters and types on which it depends.
+pub trait Config: frame_system::Config {
+	/// Because this pallet emits events, it depends on the runtime's definition of an event.
+	type Event: From<Event<Self>> + Into<<Self as frame_system::Config>::Event>
+}
 
-pub use pallet::*;
+#[cfg(feature = "std", derive(Serialize, Deserialize))]
+#[derive(PartialEq, Eq, PartialOrd, Ord, Default, Clone, Encode, Decode, Hash, Debug)]
+pub struct TransactionInput {
+	// reference to a future UTXO to be spent
+	pub outpoint: H256,
 
-#[cfg(test)]
-mod mock;
+	// proof that the tx owner is authorised to spent the referred UTXO
+	pub sigscript: H512,
+}
 
-#[cfg(test)]
-mod tests;
+pub type Value = u128;
 
-#[cfg(feature = "runtime-benchmarks")]
-mod benchmarking;
+#[cfg(feature = "std", derive(Serialize, Deserialize))]
+#[derive(PartialEq, Eq, PartialOrd, Ord, Default, Clone, Encode, Decode, Hash, Debug)]
+pub struct TransactionOutput {
+	// size of the UTXO
+	pub value: Value,
 
-#[frame_support::pallet]
-pub mod pallet {
-	use frame_support::{dispatch::DispatchResultWithPostInfo, pallet_prelude::*};
-	use frame_system::pallet_prelude::*;
+	// the key of the onwer of the transaction output
+	pub pubkey: H256,
+}
 
-	/// Configure the pallet by specifying the parameters and types on which it depends.
-	#[pallet::config]
-	pub trait Config: frame_system::Config {
-		/// Because this pallet emits events, it depends on the runtime's definition of an event.
-		type Event: From<Event<Self>> + IsType<<Self as frame_system::Config>::Event>;
+#[cfg(feature = "std", derive(Serialize, Deserialize))]
+#[derive(PartialEq, Eq, PartialOrd, Ord, Default, Clone, Encode, Decode, Hash, Debug)]
+pub struct Transaction {
+	pub inputs: Vec<TransactionInput>,
+	pub outputs: Vex<TransactionOutput>,
+}
+
+// The pallet's runtime storage items.
+// https://substrate.dev/docs/en/knowledgebase/runtime/storage
+decl_storage! {
+	trait Store for Module<T: Config> as UtxoModule {
+
 	}
+}
 
-	#[pallet::pallet]
-	#[pallet::generate_store(pub(super) trait Store)]
-	pub struct Pallet<T>(_);
-
-	// The pallet's runtime storage items.
-	// https://substrate.dev/docs/en/knowledgebase/runtime/storage
-	#[pallet::storage]
-	#[pallet::getter(fn something)]
-	// Learn more about declaring storage items:
-	// https://substrate.dev/docs/en/knowledgebase/runtime/storage#declaring-storage-items
-	pub type Something<T> = StorageValue<_, u32>;
-
-	// Pallets use events to inform users when important changes are made.
-	// https://substrate.dev/docs/en/knowledgebase/runtime/events
-	#[pallet::event]
-	#[pallet::metadata(T::AccountId = "AccountId")]
-	#[pallet::generate_deposit(pub(super) fn deposit_event)]
-	pub enum Event<T: Config> {
-		/// Event documentation should end with an array that provides descriptive names for event
-		/// parameters. [something, who]
-		SomethingStored(u32, T::AccountId),
+// Pallets use events to inform users when important changes are made.
+// Event documentation should end with an array that provides descriptive names for parameters.
+// https://substrate.dev/docs/en/knowledgebase/runtime/events
+decl_event! {
+	pub enum Event<T> where AccountId = <T as frame_system::Config>::AccountId {
 	}
+}
 
-	// Errors inform users that something went wrong.
-	#[pallet::error]
-	pub enum Error<T> {
-		/// Error names should be descriptive.
-		NoneValue,
-		/// Errors should have helpful documentation associated with them.
-		StorageOverflow,
+// Errors inform users that something went wrong.
+decl_error! {
+	pub enum Error for Module<T: Config> {
+
 	}
+}
 
-	#[pallet::hooks]
-	impl<T: Config> Hooks<BlockNumberFor<T>> for Pallet<T> {}
+// Dispatchable functions allows users to interact with the pallet and invoke state changes.
+// These functions materialize as "extrinsics", which are often compared to transactions.
+// Dispatchable functions must be annotated with a weight and must return a DispatchResult.
+decl_module! {
+	pub struct Module<T: Config> for enum Call where origin: T::Origin {
 
-	// Dispatchable functions allows users to interact with the pallet and invoke state changes.
-	// These functions materialize as "extrinsics", which are often compared to transactions.
-	// Dispatchable functions must be annotated with a weight and must return a DispatchResult.
-	#[pallet::call]
-	impl<T:Config> Pallet<T> {
-		/// An example dispatchable that takes a singles value as a parameter, writes the value to
-		/// storage and emits an event. This function must be dispatched by a signed extrinsic.
-		#[pallet::weight(10_000 + T::DbWeight::get().writes(1))]
-		pub fn do_something(origin: OriginFor<T>, something: u32) -> DispatchResultWithPostInfo {
-			// Check that the extrinsic was signed and get the signer.
-			// This function will return an error if the extrinsic is not signed.
-			// https://substrate.dev/docs/en/knowledgebase/runtime/origin
-			let who = ensure_signed(origin)?;
-
-			// Update storage.
-			<Something<T>>::put(something);
-
-			// Emit an event.
-			Self::deposit_event(Event::SomethingStored(something, who));
-			// Return a successful DispatchResultWithPostInfo
-			Ok(().into())
-		}
-
-		/// An example dispatchable that may throw a custom error.
-		#[pallet::weight(10_000 + T::DbWeight::get().reads_writes(1,1))]
-		pub fn cause_error(origin: OriginFor<T>) -> DispatchResultWithPostInfo {
-			let _who = ensure_signed(origin)?;
-
-			// Read a value from storage.
-			match <Something<T>>::get() {
-				// Return an error if the value has not been set.
-				None => Err(Error::<T>::NoneValue)?,
-				Some(old) => {
-					// Increment the value read from storage; will error in the event of overflow.
-					let new = old.checked_add(1).ok_or(Error::<T>::StorageOverflow)?;
-					// Update the value in storage with the incremented result.
-					<Something<T>>::put(new);
-					Ok(().into())
-				},
-			}
-		}
 	}
 }
