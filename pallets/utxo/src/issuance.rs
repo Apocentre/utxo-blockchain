@@ -1,7 +1,10 @@
 #![cfg_attr(not(feature = "std"), no_std)]
 
-pub trait Issuance<BlockNumber, Balance> {
-	fn issuance(block: BlockNumber) -> Balance;
+pub type BlockNumber = u32;
+pub type Balance = u128;
+
+pub trait Issuance<T, U> {
+	fn issuance(block: T) -> U;
 }
 
 // Minimal implementations for when you don't actually want any issuance
@@ -24,7 +27,7 @@ pub struct HalvingIssuance;
 const HALVING_EVERY_BLOCKS: u32 = 210_000;
 const INITIAL_ISSUANCE: u32  = 50;
 
-impl Issuance for HalvingIssuance {
+impl Issuance<BlockNumber, Balance> for HalvingIssuance {
 	fn issuance(block: BlockNumber) -> Balance {
 		let halvings = block / HALVING_EVERY_BLOCKS;
 

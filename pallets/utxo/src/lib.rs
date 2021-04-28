@@ -17,7 +17,8 @@ use sp_runtime::{
 	traits::{BlakeTwo256, Hash, SaturatedConversion},
 	transaction_validity::{TransactionLongevity, ValidTransaction},
 };
-use self::{block_author::BlockAuthor, issuance::Issuance};
+pub mod issuance;
+use crate::{issuance::Issuance};
 
 /// Configure the pallet by specifying the parameters and types on which it depends.
 pub trait Config: frame_system::Config {
@@ -108,7 +109,7 @@ decl_module! {
 			// 1. check that the transaction is valid
 
 			let mut reward = 0;
-			Self::update_storage(&tx)?;
+			Self::update_storage(&tx, reward)?;
 
 			// 3. emit success event
 			Self::deposit_event(Event::TransactionSuccess(tx));
@@ -155,15 +156,15 @@ impl<T: Config> Module<T> {
 
 	fn disperse_reward(author: &Public) {
 		// 1. divide the reward fairly amongst all validators processing the block
-		let reward = RewardTotal::take() + T::Issuance::issuance(Module::<T>::block_number());
+		let reward = RewardTotal::take() + T::Issuance::issuance(<frame_system::Module<T>>::block_number());
 
 		// 2. create utxo for validator
 		let utxo = TransactionOutput{
 			value: reward,
 			pubkey: H256::from_slice(author.as_slice()),
 		};
-
-		let current_block = Module::<T>::block_number().saturated_into::<u64>();
+		// <frame_system::Module<T>>::block_number();
+		let current_block = <frame_system::Module<T>>::block_number().saturated_into::<u64>();
 		let hash = BlakeTwo256::hash_of(&(&utxo, current_block));
 
 		// Store the Utxo
