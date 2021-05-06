@@ -22,6 +22,7 @@ serde = { version = "1.0.125" }
 sp-core = { default-features = false, version = '3.0.0' }
 sp-io = { default-features = false, version = '3.0.0' }
 sp-runtime = { default-features = false, version = '3.0.0' }
+sp-consensus-aura = { default-features = false, version = '0.9.0' }
 
 [dev-dependencies]
 
@@ -32,6 +33,7 @@ std = [
 	'frame-support/std',
 	'frame-system/std',
 	'frame-benchmarking/std',
+	'sp-consensus-aura/std',
 	'sp-std/std',
 ]
 runtime-benchmarks = [

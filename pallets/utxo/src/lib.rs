@@ -3,6 +3,7 @@ use codec::{Decode, Encode};
 use frame_support::{
 	decl_event, decl_error, decl_module, decl_storage,
 	dispatch::{DispatchResult, Vec},
+	traits::{FindAuthor},
 };
 #[cfg(feature = "std")]
 use serde::{Deserialize, Serialize};
@@ -12,19 +13,18 @@ use sp_core::{
 	H512,
 	sr25519::{Public, Signature},
 };
+use sp_consensus_aura::sr25519::AuthorityId as AuraId;
 use sp_std::collections::btree_map::BTreeMap;
 use sp_runtime::{
 	traits::{BlakeTwo256, Hash, SaturatedConversion},
 	transaction_validity::{TransactionLongevity, ValidTransaction},
 };
-pub mod issuance;
-use crate::{issuance::Issuance};
 
 /// Configure the pallet by specifying the parameters and types on which it depends.
 pub trait Config: frame_system::Config {
 	/// Because this pallet emits events, it depends on the runtime's definition of an event.
 	type Event: From<Event> + Into<<Self as frame_system::Config>::Event>;
-	type Issuance: Issuance<<Self as frame_system::Config>::BlockNumber, Value>;
+	type FindAuthor: FindAuthor<AuraId>;
 }
 
 #[cfg_attr(feature = "std", derive(Serialize, Deserialize))]
@@ -119,7 +119,10 @@ decl_module! {
 
 		// function executed at the end of each block
 		fn on_finalize() {
-			match T::BlockAuthor::block_author() {
+			let digest = <frame_system::Module<T>>::digest();
+			let pre_runtime_digests = digest.logs.iter().filter_map(|d| d.as_pre_runtime());
+
+			match T::FindAuthor::find_author(pre_runtime_digests) {
 				// Block author did not provide key to claim reward
 				None => Self::deposit_event(Event::RewardsWasted),
 				// Block author did provide key, so issue thir reward
@@ -154,16 +157,13 @@ impl<T: Config> Module<T> {
 		Ok(())
 	}
 
-	fn disperse_reward(author: &Public) {
-		// 1. divide the reward fairly amongst all validators processing the block
-		let reward = RewardTotal::take() + T::Issuance::issuance(<frame_system::Module<T>>::block_number());
-
-		// 2. create utxo for validator
+	fn disperse_reward(author: &AuraId) {
+		let reward = RewardTotal::take();
 		let utxo = TransactionOutput{
 			value: reward,
 			pubkey: H256::from_slice(author.as_slice()),
 		};
-		// <frame_system::Module<T>>::block_number();
+
 		let current_block = <frame_system::Module<T>>::block_number().saturated_into::<u64>();
 		let hash = BlakeTwo256::hash_of(&(&utxo, current_block));
 
