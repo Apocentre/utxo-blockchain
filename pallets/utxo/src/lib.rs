@@ -1,7 +1,7 @@
 #![cfg_attr(not(feature = "std"), no_std)]
 use codec::{Decode, Encode};
 use frame_support::{
-	decl_event, decl_error, decl_module, decl_storage,
+	decl_event, decl_error, decl_module, decl_storage, ensure,
 	dispatch::{DispatchResult, Vec},
 	traits::{FindAuthor},
 };
@@ -107,8 +107,8 @@ decl_module! {
 		#[weight = 10_000]
 		pub fn spend(_origin, tx: Transaction) -> DispatchResult {
 			// 1. check that the transaction is valid
+			let reward = Self::validate_transaction(&tx)?;
 
-			let mut reward = 0;
 			Self::update_storage(&tx, reward)?;
 
 			// 3. emit success event
@@ -134,6 +134,74 @@ decl_module! {
 
 // Add additional helper function that can be accessible in anywhere we import Config
 impl<T: Config> Module<T> {
+	pub fn get_simple_tx(tx: &Transaction) -> Vec<u8> {
+		let mut tx = tx.clone();
+
+		for input in tx.inputs.iter_mut() {
+			input.sigscript = H512::zero();
+		}
+
+		tx.encode()
+	}
+
+	/// 1. Inputs and Outputs are not empty
+	/// 2. Each Input exists and is used exactly once
+	/// 3. Each Output is defined exactly once and has nonzero value
+	/// 4. Total Output value must not exceed total Input value
+	/// 5. New Outputs do not collide with existing ones
+	/// 6. Replay attacks are not possible
+	/// 7. Provided Input signatures are valid
+	/// 	- The Input UTXO is indeed signed by the owner
+	///   - Transactions are tamperproof
+	pub fn validate_transaction(tx: &Transaction) -> Result<Value, &'static str> {
+		ensure!(!tx.inputs.is_empty(), "no inputs");
+		ensure!(!tx.outputs.is_empty(), "no outputs");
+
+		// use btree map to dedupe same inputs
+		let input_set: BTreeMap<_, ()> = tx.inputs.iter().map(|input| (input, ())).collect();
+		ensure!(input_set.len() == tx.inputs.len(), "Each input must be used once");
+
+		let output_set: BTreeMap<_, ()> = tx.outputs.iter().map(|output| (output, ())).collect();
+		ensure!(output_set.len() == tx.outputs.len(), "Each output must be defined only once");
+
+		let simple_transaction = Self::get_simple_tx(&tx);
+		let mut total_input: Value = 0;
+		let mut total_output: Value = 0;
+
+		for input in tx.inputs.iter() {
+			if let Some(input_utxo) = UtxoStore::get(&input.outpoint) {
+				// check sigs
+				ensure!(
+					sp_io::crypto::sr25519_verify(
+						&Signature::from_raw(*input.sigscript.as_fixed_bytes()),
+						&simple_transaction,
+						&Public::from_h256(input_utxo.pubkey)
+					),
+					"Signature must be valid"
+				);
+
+				total_input = total_input.checked_add(input_utxo.value).ok_or("input value overflow")?;
+			} else {
+				// TODO
+			}
+		}
+
+		let mut output_index: u64 = 0;
+		for output in tx.outputs.iter() {
+			ensure!(output.value > 0, "output valud must be nonzero");
+			let hash = BlakeTwo256::hash_of(&(&tx.encode(), output_index));
+			output_index = output_index.checked_add(1).ok_or("output index overflow")?;
+			ensure!(!UtxoStore::contains_key(hash), "output already exists");
+
+			total_output = total_output.checked_add(output.value).ok_or("output value overflow")?;
+		}
+
+		ensure!(total_input >= total_output, "output value must not exceed the input value");
+		let reward = total_input.checked_sub(total_output).ok_or("output index overflow")?;
+
+		Ok(reward)
+	}
+
 	fn update_storage(tx: &Transaction, reward: Value) -> DispatchResult {
 		let new_total = RewardTotal::get()
 			.checked_add(reward)
